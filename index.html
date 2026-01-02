@@ -473,16 +473,20 @@
                               <tr key={i} className="border-b">
                                 <td className="px-3 py-2 min-w-[200px]">
                                   <div className="relative">
-                                    <input type="text" value={productSearchQuery['inv-'+i] !== undefined ? productSearchQuery['inv-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['inv-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
-                                    {productDropdownOpen['inv-'+i] && (
-                                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                        {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['inv-'+i] || '').toLowerCase())).map(p => (
-                                          <div key={p} onClick={() => { updateInvoiceItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['inv-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between">
-                                            <span>{p}</span>{products[p]?.hasCarnet && <span className="carnet-badge">CARNET</span>}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
+                                    <input id={'inv-input-'+i} type="text" value={productSearchQuery['inv-'+i] !== undefined ? productSearchQuery['inv-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['inv-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
+                                    {productDropdownOpen['inv-'+i] && (() => {
+                                      const el = document.getElementById('inv-input-'+i);
+                                      const rect = el?.getBoundingClientRect();
+                                      return rect ? (
+                                        <div style={{ position: 'fixed', top: rect.bottom + 4 + 'px', left: rect.left + 'px', width: rect.width + 'px', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                          {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['inv-'+i] || '').toLowerCase())).map(p => (
+                                            <div key={p} onClick={() => { updateInvoiceItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['inv-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b border-gray-100 last:border-b-0">
+                                              <span>{p}</span>{products[p]?.hasCarnet && <span className="carnet-badge">CARNET</span>}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : null;
+                                    })()}
                                   </div>
                                 </td>
                                 <td className="px-3 py-2"><input type="number" value={item.quantity} onChange={e => updateInvoiceItem(i, 'quantity', e.target.value)} className="w-20 px-2 py-2 border rounded-lg" /></td>
@@ -545,14 +549,18 @@
                                 <tr key={i} className="border-b">
                                   <td className="px-3 py-2 min-w-[200px]">
                                     <div className="relative">
-                                      <input type="text" value={productSearchQuery['car-'+i] !== undefined ? productSearchQuery['car-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['car-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
-                                      {productDropdownOpen['car-'+i] && (
-                                        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                          {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['car-'+i] || '').toLowerCase())).map(p => (
-                                            <div key={p} onClick={() => { updateCarnetItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['car-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm">{p}</div>
-                                          ))}
-                                        </div>
-                                      )}
+                                      <input id={'car-input-'+i} type="text" value={productSearchQuery['car-'+i] !== undefined ? productSearchQuery['car-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['car-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
+                                      {productDropdownOpen['car-'+i] && (() => {
+                                        const el = document.getElementById('car-input-'+i);
+                                        const rect = el?.getBoundingClientRect();
+                                        return rect ? (
+                                          <div style={{ position: 'fixed', top: rect.bottom + 4 + 'px', left: rect.left + 'px', width: rect.width + 'px', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                            {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['car-'+i] || '').toLowerCase())).map(p => (
+                                              <div key={p} onClick={() => { updateCarnetItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['car-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0">{p}</div>
+                                            ))}
+                                          </div>
+                                        ) : null;
+                                      })()}
                                     </div>
                                   </td>
                                   <td className="px-3 py-2"><input type="number" value={item.quantity} onChange={e => updateCarnetItem(i, 'quantity', e.target.value)} className="w-20 px-2 py-2 border rounded-lg" /></td>
