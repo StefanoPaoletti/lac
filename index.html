@@ -43,6 +43,7 @@
           // Form fattura
           const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
           const [invoiceNumber, setInvoiceNumber] = useState('');
+          const [shippingCost, setShippingCost] = useState('');
           const [invoiceItems, setInvoiceItems] = useState([{ product: '', quantity: '', price: '', discount: '10', vat: '4' }]);
           const [editingInvoice, setEditingInvoice] = useState(null);
           const [productDropdownOpen, setProductDropdownOpen] = useState({});
@@ -160,14 +161,14 @@
           const addInvoiceItem = () => setInvoiceItems([...invoiceItems, { product: '', quantity: '', price: '', discount: '10', vat: '4' }]);
           const removeInvoiceItem = i => setInvoiceItems(invoiceItems.filter((_, idx) => idx !== i));
           const updateInvoiceItem = (i, field, value) => { const u = [...invoiceItems]; u[i][field] = value; setInvoiceItems(u); };
-          const resetInvoiceForm = () => { setEditingInvoice(null); setInvoiceDate(new Date().toISOString().split('T')[0]); setInvoiceNumber(''); setInvoiceItems([{ product: '', quantity: '', price: '', discount: '10', vat: '4' }]); };
+          const resetInvoiceForm = () => { setEditingInvoice(null); setInvoiceDate(new Date().toISOString().split('T')[0]); setInvoiceNumber(''); setShippingCost(''); setInvoiceItems([{ product: '', quantity: '', price: '', discount: '10', vat: '4' }]); };
           
           const saveInvoice = async () => {
             const validItems = invoiceItems.filter(i => i.product && i.quantity && i.price);
             if (!invoiceDate || !invoiceNumber || validItems.length === 0) return setModal({ show: true, type: 'warning', title: 'Campi obbligatori', message: 'Compila tutti i campi.' });
             const year = new Date(invoiceDate).getFullYear().toString();
             const payload = {
-              id: editingInvoice ? editingInvoice.id : Date.now(), date: invoiceDate, number: invoiceNumber, year,
+              id: editingInvoice ? editingInvoice.id : Date.now(), date: invoiceDate, number: invoiceNumber, year, shippingCost: parseFloat(shippingCost) || 0,
               items: validItems.map(item => ({ product: item.product, quantity: parseFloat(item.quantity), priceGross: parseFloat(item.price), priceNet: parseFloat(item.price) * (1 - (parseFloat(item.discount) || 0) / 100), discount: parseFloat(item.discount) || 0, vat: parseFloat(item.vat) || 4 }))
             };
             const success = await saveToGoogleSheets(editingInvoice ? 'updateInvoice' : 'saveInvoice', payload);
@@ -175,7 +176,7 @@
           };
           
           const deleteInvoice = id => setConfirmModal({ show: true, title: 'Elimina fattura', message: 'Sei sicuro?', onConfirm: async () => { setConfirmModal({ show: false }); await saveToGoogleSheets('deleteInvoice', { id }); } });
-          const startEditInvoice = inv => { setEditingInvoice(inv); setInvoiceDate(inv.date); setInvoiceNumber(inv.number); setInvoiceItems(inv.items.map(it => ({ product: it.product, quantity: it.quantity, price: it.priceGross, discount: it.discount || '10', vat: it.vat || '4' }))); setActiveTab('invoices'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+          const startEditInvoice = inv => { setEditingInvoice(inv); setInvoiceDate(inv.date); setInvoiceNumber(inv.number); setShippingCost(inv.shippingCost || ''); setInvoiceItems(inv.items.map(it => ({ product: it.product, quantity: it.quantity, price: it.priceGross, discount: it.discount || '10', vat: it.vat || '4' }))); setActiveTab('invoices'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
           
           // Carnet
           const addCarnetItem = () => setCarnetItems([...carnetItems, { product: '', quantity: '', priceUnit: '', vat: '4' }]);
@@ -232,12 +233,16 @@
               
               const filteredInvoices = selectedYear === 'all' ? invoices : invoices.filter(i => String(i.year) === selectedYear);
               filteredInvoices.forEach(inv => {
+                const totalPieces = inv.items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0), 0);
+                const shipping = parseFloat(inv.shippingCost) || 0;
+                
                 inv.items.forEach(item => {
                   if (item.product === product) {
                     const qty = parseFloat(item.quantity) || 0;
                     const netPrice = parseFloat(item.priceNet) || 0;
                     const vat = parseFloat(item.vat) || 4;
-                    totalCost += qty * netPrice * (1 + vat / 100);
+                    const shippingShare = totalPieces > 0 ? (qty / totalPieces) * shipping * 1.22 : 0;
+                    totalCost += qty * netPrice * (1 + vat / 100) + shippingShare;
                     totalQty += qty;
                   }
                 });
@@ -381,7 +386,7 @@
                             <option value="all">Tutti gli anni</option>
                             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
                           </select>
-                          <button onClick={exportDashboardImage} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"><IconCamera /><span>Esporta</span></button>
+                          <button onClick={exportDashboardImage} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"><IconCamera /><span>Esporta Immagine</span></button>
                         </div>
                       </div>
                     </div>
@@ -470,9 +475,22 @@
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
                         <div><label className="block text-sm font-medium mb-1">Data</label><input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg" /></div>
                         <div><label className="block text-sm font-medium mb-1">Numero</label><input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="es. 253013521" className="w-full px-3 py-2 border rounded-lg" /></div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <label className="block text-sm font-medium">Spese Spedizione</label>
+                            <div className="relative group info-icon">
+                              <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
+                              <div className="absolute left-0 top-6 hidden group-hover:block z-10 w-56 px-3 py-2 text-xs text-white bg-gray-700 rounded-lg shadow-xl">
+                                Importo senza IVA, verrà aggiunto il 22% e ripartito proporzionalmente
+                                <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-700 transform rotate-45"></div>
+                              </div>
+                            </div>
+                          </div>
+                          <input type="number" step="0.01" value={shippingCost} onChange={e => setShippingCost(e.target.value)} placeholder="0.00" className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
                       </div>
                       <div className="overflow-x-auto mb-4">
                         <table className="w-full text-sm">
@@ -521,6 +539,7 @@
                           <div key={inv.id} className="border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start">
                             <div>
                               <div className="font-bold">{inv.number} - {inv.date}</div>
+                              {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
                               <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%)</div>)}</div>
                             </div>
                             <div className="flex gap-2">
