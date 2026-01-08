@@ -554,6 +554,24 @@
                           </tbody>
                         </table>
                       </div>
+                      {(() => {
+                        const prodTotal = invoiceItems.reduce((s, it) => {
+                          const qty = parseFloat(it.quantity) || 0;
+                          const price = parseFloat(it.price) || 0;
+                          const discount = parseFloat(it.discount) || 0;
+                          const vat = parseFloat(it.vat) || 4;
+                          return s + qty * price * (1 - discount / 100) * (1 + vat / 100);
+                        }, 0);
+                        const shipping = (parseFloat(shippingCost) || 0) * 1.22;
+                        const total = prodTotal + shipping;
+                        return (
+                          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <div className="flex justify-between items-center"><span className="font-medium">Totale Prodotti:</span><span className="font-bold text-blue-600">€ {prodTotal.toFixed(2)}</span></div>
+                            {shipping > 0 && <div className="flex justify-between items-center mt-1"><span className="font-medium">Spese Spedizione (+ IVA 22%):</span><span className="font-bold text-blue-600">€ {shipping.toFixed(2)}</span></div>}
+                            <div className="flex justify-between items-center mt-1 pt-1 border-t border-blue-300"><span className="font-medium">Totale Fattura:</span><span className="font-bold text-blue-700">€ {total.toFixed(2)}</span></div>
+                          </div>
+                        );
+                      })()}
                       <div className="flex flex-wrap gap-3">
                         <button onClick={addInvoiceItem} className="px-4 py-2 border-2 border-dashed rounded-lg hover:bg-gray-50 flex items-center gap-2"><IconPlus />Aggiungi Riga</button>
                         <button onClick={saveInvoice} disabled={isLoading} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><IconSave />{editingInvoice ? 'Aggiorna' : 'Salva'}</button>
