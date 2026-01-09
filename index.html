@@ -39,6 +39,11 @@
           const [searchQuery, setSearchQuery] = useState('');
           const [isLoading, setIsLoading] = useState(false);
           
+          // Filtri fatture
+          const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+          const [invoiceYearFilter, setInvoiceYearFilter] = useState('all');
+          const [invoiceCarnetFilter, setInvoiceCarnetFilter] = useState(false);
+          
           // Form fattura
           const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
           const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -538,28 +543,74 @@
                       </div>
                     </div>
                     <div className="bg-white rounded-lg shadow p-6">
-                      <h2 className="text-xl font-bold mb-4">Fatture ({invoices.length})</h2>
+                      <h2 className="text-xl font-bold mb-4">Fatture inserite ({invoices.length})</h2>
+                      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                        <div className="relative flex-1">
+                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                          <input 
+                            type="text" 
+                            placeholder="Cerca per numero fattura o prodotto..." 
+                            value={invoiceSearchQuery} 
+                            onChange={e => setInvoiceSearchQuery(e.target.value)} 
+                            className="w-full pl-10 pr-3 py-2 border rounded-lg text-sm"
+                          />
+                        </div>
+                        <select 
+                          value={invoiceYearFilter} 
+                          onChange={e => setInvoiceYearFilter(e.target.value)} 
+                          className="px-3 py-2 border rounded-lg text-sm min-w-[120px]"
+                        >
+                          <option value="all">Tutti gli anni</option>
+                          {[...new Set(invoices.map(i => i.year))].sort((a, b) => b - a).map(y => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                        <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer hover:bg-purple-50 transition-colors">
+                          <input 
+                            type="checkbox" 
+                            checked={invoiceCarnetFilter} 
+                            onChange={e => setInvoiceCarnetFilter(e.target.checked)} 
+                            className="w-4 h-4 accent-purple-600"
+                          />
+                          <span className="text-sm font-medium text-purple-700">Solo Carnet</span>
+                        </label>
+                      </div>
                       <div className="space-y-3">
-                        {invoices.sort((a, b) => b.date.localeCompare(a.date)).map(inv => {
-                          const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
-                          const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
-                          const total = prodTotal + shipping;
-                          const hasCarnet = inv.items.some(it => it.isCarnet);
-                          return (
-                            <div key={inv.id} className={'border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start ' + (hasCarnet ? 'border-l-4 border-l-purple-500' : '')}>
-                              <div>
-                                <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span>{hasCarnet && <span className="carnet-badge ml-2">CARNET</span>}</div>
-                                {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
-                                <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%){it.isCarnet && <span className="carnet-badge ml-1">C</span>}</div>)}</div>
+                        {(() => {
+                          const filtered = invoices
+                            .filter(inv => invoiceYearFilter === 'all' || String(inv.year) === invoiceYearFilter)
+                            .filter(inv => {
+                              if (!invoiceSearchQuery) return true;
+                              const q = invoiceSearchQuery.toLowerCase();
+                              return inv.number.toLowerCase().includes(q) || inv.items.some(it => it.product.toLowerCase().includes(q));
+                            })
+                            .filter(inv => !invoiceCarnetFilter || inv.items.some(it => it.isCarnet))
+                            .sort((a, b) => b.date.localeCompare(a.date));
+                          
+                          if (filtered.length === 0) {
+                            return <div className="text-center py-4 text-gray-500">{invoices.length === 0 ? 'Nessuna fattura' : 'Nessun risultato'}</div>;
+                          }
+                          
+                          return filtered.map(inv => {
+                            const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
+                            const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
+                            const total = prodTotal + shipping;
+                            const hasCarnet = inv.items.some(it => it.isCarnet);
+                            return (
+                              <div key={inv.id} className={'border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start ' + (hasCarnet ? 'border-l-4 border-l-purple-500' : '')}>
+                                <div>
+                                  <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span>{hasCarnet && <span className="carnet-badge ml-2">CARNET</span>}</div>
+                                  {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
+                                  <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%){it.isCarnet && <span className="carnet-badge ml-1">C</span>}</div>)}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button onClick={() => startEditInvoice(inv)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
+                                  <button onClick={() => deleteInvoice(inv.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
+                                </div>
                               </div>
-                              <div className="flex gap-2">
-                                <button onClick={() => startEditInvoice(inv)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
-                                <button onClick={() => deleteInvoice(inv.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {invoices.length === 0 && <div className="text-center py-4 text-gray-500">Nessuna fattura</div>}
+                            );
+                          });
+                        })()}
                       </div>
                     </div>
                   </div>
