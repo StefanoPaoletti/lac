@@ -32,7 +32,6 @@
           const [savedPassword, setSavedPassword] = useState('');
           const [activeTab, setActiveTab] = useState('dashboard');
           const [invoices, setInvoices] = useState([]);
-          const [carnet, setCarnet] = useState([]);
           const [creditNotes, setCreditNotes] = useState([]);
           const [products, setProducts] = useState({});
           const PRODUCTS = Object.keys(products).sort();
@@ -44,16 +43,10 @@
           const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
           const [invoiceNumber, setInvoiceNumber] = useState('');
           const [shippingCost, setShippingCost] = useState('');
-          const [invoiceItems, setInvoiceItems] = useState([{ product: '', quantity: '', price: '', discount: '10', vat: '4' }]);
+          const [invoiceItems, setInvoiceItems] = useState([{ product: '', quantity: '', price: '', discount: '10', vat: '4', isCarnet: false }]);
           const [editingInvoice, setEditingInvoice] = useState(null);
           const [productDropdownOpen, setProductDropdownOpen] = useState({});
           const [productSearchQuery, setProductSearchQuery] = useState({});
-          
-          // Form carnet
-          const [carnetDate, setCarnetDate] = useState(new Date().toISOString().split('T')[0]);
-          const [carnetNumber, setCarnetNumber] = useState('');
-          const [carnetItems, setCarnetItems] = useState([{ product: '', quantity: '', priceUnit: '', vat: '4' }]);
-          const [editingCarnet, setEditingCarnet] = useState(null);
           
           // Form nota credito (multi-prodotto)
           const [creditDate, setCreditDate] = useState(new Date().toISOString().split('T')[0]);
@@ -96,18 +89,9 @@
                 if (!invoiceMap[row.id]) {
                   invoiceMap[row.id] = { id: row.id, year: row.year, date: String(row.date).split('T')[0], number: row.number, shippingCost: row.shippingCost || 0, items: [] };
                 }
-                invoiceMap[row.id].items.push({ product: row.product, quantity: row.quantity, priceGross: row.priceGross, priceNet: row.priceNet, discount: row.discount || 0, vat: row.vat });
+                invoiceMap[row.id].items.push({ product: row.product, quantity: row.quantity, priceGross: row.priceGross, priceNet: row.priceNet, discount: row.discount || 0, vat: row.vat, isCarnet: row.isCarnet || false });
               });
               setInvoices(Object.values(invoiceMap));
-              
-              const carnetMap = {};
-              (data.carnet || []).forEach(row => {
-                if (!carnetMap[row.id]) {
-                  carnetMap[row.id] = { id: row.id, year: row.year, date: String(row.date).split('T')[0], number: row.number, items: [] };
-                }
-                carnetMap[row.id].items.push({ product: row.product, quantity: row.quantity, priceUnit: row.priceUnit, vat: row.vat, total: row.total });
-              });
-              setCarnet(Object.values(carnetMap));
               
               // Credit notes multi-prodotto
               const creditMap = {};
@@ -166,10 +150,18 @@
           };
           
           // Fatture
-          const addInvoiceItem = () => setInvoiceItems([...invoiceItems, { product: '', quantity: '', price: '', discount: '10', vat: '4' }]);
+          const addInvoiceItem = () => setInvoiceItems([...invoiceItems, { product: '', quantity: '', price: '', discount: '10', vat: '4', isCarnet: false }]);
           const removeInvoiceItem = i => setInvoiceItems(invoiceItems.filter((_, idx) => idx !== i));
-          const updateInvoiceItem = (i, field, value) => { const u = [...invoiceItems]; u[i][field] = value; setInvoiceItems(u); };
-          const resetInvoiceForm = () => { setEditingInvoice(null); setInvoiceDate(new Date().toISOString().split('T')[0]); setInvoiceNumber(''); setShippingCost(''); setInvoiceItems([{ product: '', quantity: '', price: '', discount: '10', vat: '4' }]); };
+          const updateInvoiceItem = (i, field, value) => { 
+            const u = [...invoiceItems]; 
+            u[i][field] = value; 
+            // Se spunta Carnet, imposta sconto a 0 automaticamente
+            if (field === 'isCarnet' && value === true) {
+              u[i].discount = '0';
+            }
+            setInvoiceItems(u); 
+          };
+          const resetInvoiceForm = () => { setEditingInvoice(null); setInvoiceDate(new Date().toISOString().split('T')[0]); setInvoiceNumber(''); setShippingCost(''); setInvoiceItems([{ product: '', quantity: '', price: '', discount: '10', vat: '4', isCarnet: false }]); };
           
           const saveInvoice = async () => {
             const validItems = invoiceItems.filter(i => i.product && i.quantity && i.price);
@@ -177,35 +169,14 @@
             const year = new Date(invoiceDate).getFullYear().toString();
             const payload = {
               id: editingInvoice ? editingInvoice.id : Date.now(), date: invoiceDate, number: invoiceNumber, year, shippingCost: parseFloat(shippingCost) || 0,
-              items: validItems.map(item => ({ product: item.product, quantity: parseFloat(item.quantity), priceGross: parseFloat(item.price), priceNet: parseFloat(item.price) * (1 - (parseFloat(item.discount) || 0) / 100), discount: parseFloat(item.discount) || 0, vat: parseFloat(item.vat) || 4 }))
+              items: validItems.map(item => ({ product: item.product, quantity: parseFloat(item.quantity), priceGross: parseFloat(item.price), priceNet: parseFloat(item.price) * (1 - (parseFloat(item.discount) || 0) / 100), discount: parseFloat(item.discount) || 0, vat: parseFloat(item.vat) || 4, isCarnet: item.isCarnet || false }))
             };
             const success = await saveToGoogleSheets(editingInvoice ? 'updateInvoice' : 'saveInvoice', payload);
             if (success) { resetInvoiceForm(); setModal({ show: true, type: 'success', title: 'Salvato', message: 'Fattura salvata!' }); }
           };
           
           const deleteInvoice = id => setConfirmModal({ show: true, title: 'Elimina fattura', message: 'Sei sicuro?', onConfirm: async () => { setConfirmModal({ show: false }); await saveToGoogleSheets('deleteInvoice', { id }); } });
-          const startEditInvoice = inv => { setEditingInvoice(inv); setInvoiceDate(inv.date); setInvoiceNumber(inv.number); setShippingCost(inv.shippingCost || ''); setInvoiceItems(inv.items.map(it => ({ product: it.product, quantity: it.quantity, price: it.priceGross, discount: it.discount !== undefined ? it.discount : '10', vat: it.vat || '4' }))); setActiveTab('invoices'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
-          
-          // Carnet
-          const addCarnetItem = () => setCarnetItems([...carnetItems, { product: '', quantity: '', priceUnit: '', vat: '4' }]);
-          const removeCarnetItem = i => setCarnetItems(carnetItems.filter((_, idx) => idx !== i));
-          const updateCarnetItem = (i, field, value) => { const u = [...carnetItems]; u[i][field] = value; setCarnetItems(u); };
-          const resetCarnetForm = () => { setEditingCarnet(null); setCarnetDate(new Date().toISOString().split('T')[0]); setCarnetNumber(''); setCarnetItems([{ product: '', quantity: '', priceUnit: '', vat: '4' }]); };
-          
-          const saveCarnet = async () => {
-            const validItems = carnetItems.filter(i => i.product && i.quantity && i.priceUnit);
-            if (!carnetDate || !carnetNumber || validItems.length === 0) return setModal({ show: true, type: 'warning', title: 'Campi obbligatori', message: 'Compila tutti i campi.' });
-            const year = new Date(carnetDate).getFullYear().toString();
-            const payload = {
-              id: editingCarnet ? editingCarnet.id : Date.now(), date: carnetDate, number: carnetNumber, year,
-              items: validItems.map(item => ({ product: item.product, quantity: parseFloat(item.quantity), priceUnit: parseFloat(item.priceUnit), vat: parseFloat(item.vat) || 4 }))
-            };
-            const success = await saveToGoogleSheets(editingCarnet ? 'updateCarnet' : 'saveCarnet', payload);
-            if (success) { resetCarnetForm(); setModal({ show: true, type: 'success', title: 'Salvato', message: 'Carnet salvato!' }); }
-          };
-          
-          const deleteCarnet = id => setConfirmModal({ show: true, title: 'Elimina carnet', message: 'Sei sicuro?', onConfirm: async () => { setConfirmModal({ show: false }); await saveToGoogleSheets('deleteCarnet', { id }); } });
-          const startEditCarnet = c => { setEditingCarnet(c); setCarnetDate(c.date); setCarnetNumber(c.number); setCarnetItems(c.items.map(it => ({ product: it.product, quantity: it.quantity, priceUnit: it.priceUnit, vat: it.vat || '4' }))); setActiveTab('carnet'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+          const startEditInvoice = inv => { setEditingInvoice(inv); setInvoiceDate(inv.date); setInvoiceNumber(inv.number); setShippingCost(inv.shippingCost || ''); setInvoiceItems(inv.items.map(it => ({ product: it.product, quantity: it.quantity, price: it.priceGross, discount: it.discount !== undefined ? it.discount : '10', vat: it.vat || '4', isCarnet: it.isCarnet || false }))); setActiveTab('invoices'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
           
           // Note credito (multi-prodotto)
           const addCreditItem = () => setCreditItems([...creditItems, { product: '', quantity: '', priceUnit: '', vat: '4' }]);
@@ -263,19 +234,6 @@
                 });
               });
               
-              const filteredCarnet = selectedYear === 'all' ? carnet : carnet.filter(c => String(c.year) === selectedYear);
-              filteredCarnet.forEach(c => {
-                c.items.forEach(item => {
-                  if (item.product === product) {
-                    const qty = parseFloat(item.quantity) || 0;
-                    const priceUnit = parseFloat(item.priceUnit) || 0;
-                    const vat = parseFloat(item.vat) || 4;
-                    totalCost += qty * priceUnit * (1 + vat / 100);
-                    totalQty += qty;
-                  }
-                });
-              });
-              
               // Note credito - usa creditTotal ripartito proporzionalmente se presente
               const filteredCredits = selectedYear === 'all' ? creditNotes : creditNotes.filter(n => String(n.year) === selectedYear);
               filteredCredits.forEach(note => {
@@ -307,7 +265,7 @@
               result[product] = { avgCost, onlinePrice, margin, totalQty, totalCost, hasCarnet };
             });
             return result;
-          }, [invoices, carnet, creditNotes, products, selectedYear]);
+          }, [invoices, creditNotes, products, selectedYear]);
           
           // SVG Icons
           const IconEyeOff = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>;
@@ -383,9 +341,9 @@
                     </div>
                   </div>
                   <div className="flex gap-2 sm:gap-4 mt-4 sm:mt-6 overflow-x-auto pb-2 -mx-4 px-4">
-                    {['dashboard', 'invoices', 'carnet', 'credits', 'products'].map(tab => (
+                    {['dashboard', 'invoices', 'credits', 'products'].map(tab => (
                       <button key={tab} onClick={() => setActiveTab(tab)} className={'px-4 sm:px-6 py-2 rounded font-medium whitespace-nowrap text-sm sm:text-base transition-all ' + (activeTab === tab ? 'tab-active' : 'bg-gray-200 text-gray-700 hover:bg-gray-300')}>
-                        {tab === 'dashboard' ? 'Dashboard' : tab === 'invoices' ? 'Fatture' : tab === 'carnet' ? 'Carnet' : tab === 'credits' ? 'Note Credito' : 'Prodotti'}
+                        {tab === 'dashboard' ? 'Dashboard' : tab === 'invoices' ? 'Fatture' : tab === 'credits' ? 'Note Credito' : 'Prodotti'}
                       </button>
                     ))}
                   </div>
@@ -481,7 +439,7 @@
                               ))}
                             </tbody>
                           </table>
-                          {Object.entries(analysis).filter(([, d]) => d.totalQty > 0).length === 0 && <div className="text-center py-12 text-gray-500">Nessun dato. Inserisci fatture o carnet.</div>}
+                          {Object.entries(analysis).filter(([, d]) => d.totalQty > 0).length === 0 && <div className="text-center py-12 text-gray-500">Nessun dato. Inserisci fatture.</div>}
                         </div>
                       </div>
                     </div>
@@ -522,10 +480,10 @@
                       </div>
                       <div className="overflow-x-auto mb-4">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-100"><tr><th className="px-3 py-2 text-left">Prodotto</th><th className="px-3 py-2 text-left">Qtà</th><th className="px-3 py-2 text-left">Prezzo €</th><th className="px-3 py-2 text-left">Sconto %</th><th className="px-3 py-2 text-left">IVA %</th><th className="px-3 py-2"></th></tr></thead>
+                          <thead className="bg-gray-100"><tr><th className="px-3 py-2 text-left">Prodotto</th><th className="px-3 py-2 text-left">Qtà</th><th className="px-3 py-2 text-left">Prezzo €</th><th className="px-3 py-2 text-left">Sconto %</th><th className="px-3 py-2 text-left">IVA %</th><th className="px-3 py-2 text-center">Carnet</th><th className="px-3 py-2"></th></tr></thead>
                           <tbody>
                             {invoiceItems.map((item, i) => (
-                              <tr key={i} className="border-b">
+                              <tr key={i} className={'border-b ' + (item.isCarnet ? 'bg-blue-50' : '')}>
                                 <td className="px-3 py-2 min-w-[200px]">
                                   <div className="relative">
                                     <input id={'inv-input-'+i} type="text" value={productSearchQuery['inv-'+i] !== undefined ? productSearchQuery['inv-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['inv-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['inv-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
@@ -548,6 +506,7 @@
                                 <td className="px-3 py-2"><input type="number" step="0.01" value={item.price} onChange={e => updateInvoiceItem(i, 'price', e.target.value)} className="w-24 px-2 py-2 border rounded-lg" /></td>
                                 <td className="px-3 py-2"><input type="number" value={item.discount} onChange={e => updateInvoiceItem(i, 'discount', e.target.value)} className="w-16 px-2 py-2 border rounded-lg" /></td>
                                 <td className="px-3 py-2"><input type="number" value={item.vat} onChange={e => updateInvoiceItem(i, 'vat', e.target.value)} className="w-16 px-2 py-2 border rounded-lg" /></td>
+                                <td className="px-3 py-2 text-center"><input type="checkbox" checked={item.isCarnet || false} onChange={e => updateInvoiceItem(i, 'isCarnet', e.target.checked)} className="w-5 h-5" /></td>
                                 <td className="px-3 py-2"><button onClick={() => removeInvoiceItem(i)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button></td>
                               </tr>
                             ))}
@@ -585,12 +544,13 @@
                           const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
                           const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
                           const total = prodTotal + shipping;
+                          const hasCarnet = inv.items.some(it => it.isCarnet);
                           return (
-                            <div key={inv.id} className="border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start">
+                            <div key={inv.id} className={'border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start ' + (hasCarnet ? 'border-l-4 border-l-blue-500' : '')}>
                               <div>
-                                <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span></div>
+                                <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span>{hasCarnet && <span className="carnet-badge ml-2">CARNET</span>}</div>
                                 {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
-                                <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%)</div>)}</div>
+                                <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%){it.isCarnet && <span className="carnet-badge ml-1">C</span>}</div>)}</div>
                               </div>
                               <div className="flex gap-2">
                                 <button onClick={() => startEditInvoice(inv)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
@@ -600,94 +560,6 @@
                           );
                         })}
                         {invoices.length === 0 && <div className="text-center py-4 text-gray-500">Nessuna fattura</div>}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* CARNET */}
-                {activeTab === 'carnet' && (
-                  <div className="space-y-6">
-                    <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                      <h2 className="text-xl sm:text-2xl font-bold mb-2">{editingCarnet ? 'Modifica Carnet' : 'Nuovo Carnet'}</h2>
-                      <div className="flex items-center gap-2 mb-4">
-                        <p className="text-sm text-gray-500">Acquisti prepagati PURCHASE BANK</p>
-                        <div className="relative group info-icon">
-                          <svg className="w-4 h-4 text-gray-400 cursor-help" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" /></svg>
-                          <div className="absolute left-0 top-6 hidden group-hover:block z-10 w-64 px-3 py-2 text-xs text-white bg-gray-700 rounded-lg shadow-xl">
-                            Inserisci qui gli acquisti prepagati con prezzi scontati.<br/><br/>Es: 30x AVAIRA VITALITY 6PK @ €13,30
-                            <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-700 transform rotate-45"></div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4">
-                        <div><label className="block text-sm font-medium mb-1">Data</label><input type="date" value={carnetDate} onChange={e => setCarnetDate(e.target.value)} className="w-full px-3 py-2 border rounded-lg" /></div>
-                        <div><label className="block text-sm font-medium mb-1">Numero</label><input type="text" value={carnetNumber} onChange={e => setCarnetNumber(e.target.value)} placeholder="es. 253013523" className="w-full px-3 py-2 border rounded-lg" /></div>
-                      </div>
-                      <div className="overflow-x-auto mb-4">
-                        <table className="w-full text-sm">
-                          <thead className="bg-blue-50"><tr><th className="px-3 py-2 text-left">Prodotto</th><th className="px-3 py-2 text-left">Qtà</th><th className="px-3 py-2 text-left">Prezzo Unit. €</th><th className="px-3 py-2 text-left">IVA %</th><th className="px-3 py-2 text-left">Totale</th><th className="px-3 py-2"></th></tr></thead>
-                          <tbody>
-                            {carnetItems.map((item, i) => {
-                              const qty = parseFloat(item.quantity) || 0;
-                              const price = parseFloat(item.priceUnit) || 0;
-                              const vat = parseFloat(item.vat) || 4;
-                              const total = qty * price * (1 + vat / 100);
-                              return (
-                                <tr key={i} className="border-b">
-                                  <td className="px-3 py-2 min-w-[200px]">
-                                    <div className="relative">
-                                      <input id={'car-input-'+i} type="text" value={productSearchQuery['car-'+i] !== undefined ? productSearchQuery['car-'+i] : item.product} onChange={e => { setProductSearchQuery({...productSearchQuery, ['car-'+i]: e.target.value}); setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true}); }} onFocus={() => setProductDropdownOpen({...productDropdownOpen, ['car-'+i]: true})} placeholder="Cerca..." className="w-full px-3 py-2 border rounded-lg text-sm" />
-                                      {productDropdownOpen['car-'+i] && (() => {
-                                        const el = document.getElementById('car-input-'+i);
-                                        const rect = el?.getBoundingClientRect();
-                                        return rect ? (
-                                          <div style={{ position: 'fixed', top: rect.bottom + 4 + 'px', left: rect.left + 'px', width: rect.width + 'px', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                                            {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['car-'+i] || '').toLowerCase())).map(p => (
-                                              <div key={p} onClick={() => { updateCarnetItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['car-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0">{p}</div>
-                                            ))}
-                                          </div>
-                                        ) : null;
-                                      })()}
-                                    </div>
-                                  </td>
-                                  <td className="px-3 py-2"><input type="number" value={item.quantity} onChange={e => updateCarnetItem(i, 'quantity', e.target.value)} className="w-20 px-2 py-2 border rounded-lg" /></td>
-                                  <td className="px-3 py-2"><input type="number" step="0.01" value={item.priceUnit} onChange={e => updateCarnetItem(i, 'priceUnit', e.target.value)} className="w-24 px-2 py-2 border rounded-lg" /></td>
-                                  <td className="px-3 py-2"><input type="number" value={item.vat} onChange={e => updateCarnetItem(i, 'vat', e.target.value)} className="w-16 px-2 py-2 border rounded-lg" /></td>
-                                  <td className="px-3 py-2 font-medium text-blue-600">€ {total.toFixed(2)}</td>
-                                  <td className="px-3 py-2"><button onClick={() => removeCarnetItem(i)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button></td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="flex flex-wrap gap-3">
-                        <button onClick={addCarnetItem} className="px-4 py-2 border-2 border-dashed rounded-lg hover:bg-gray-50 flex items-center gap-2"><IconPlus />Aggiungi Riga</button>
-                        <button onClick={saveCarnet} disabled={isLoading} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"><IconSave />{editingCarnet ? 'Aggiorna' : 'Salva'}</button>
-                        {editingCarnet && <button onClick={resetCarnetForm} className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Annulla</button>}
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg shadow p-6">
-                      <h2 className="text-xl font-bold mb-4">Carnet ({carnet.length})</h2>
-                      <div className="space-y-3">
-                        {carnet.sort((a, b) => b.date.localeCompare(a.date)).map(c => {
-                          const total = c.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceUnit) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
-                          return (
-                            <div key={c.id} className="border-l-4 border-blue-500 border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start">
-                              <div>
-                                <div className="font-bold flex items-center gap-2">{c.number} - {c.date}<span className="carnet-badge">CARNET</span></div>
-                                <div className="text-sm text-gray-600 mt-1">{c.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceUnit}</div>)}</div>
-                                <div className="font-medium mt-2 text-blue-600">Totale: € {total.toFixed(2)}</div>
-                              </div>
-                              <div className="flex gap-2">
-                                <button onClick={() => startEditCarnet(c)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
-                                <button onClick={() => deleteCarnet(c.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {carnet.length === 0 && <div className="text-center py-4 text-gray-500">Nessun carnet</div>}
                       </div>
                     </div>
                   </div>
@@ -855,8 +727,8 @@
                               ><IconEdit /></button>
                               <button
                                 onClick={() => {
-                                  const inUse = invoices.some(inv => inv.items.some(it => it.product === product)) || carnet.some(c => c.items.some(it => it.product === product)) || creditNotes.some(n => n.items.some(it => it.product === product));
-                                  if (inUse) return setModal({ show: true, type: 'warning', title: 'Prodotto in uso', message: 'Non puoi eliminare un prodotto presente in fatture, carnet o note credito.' });
+                                  const inUse = invoices.some(inv => inv.items.some(it => it.product === product)) || creditNotes.some(n => n.items.some(it => it.product === product));
+                                  if (inUse) return setModal({ show: true, type: 'warning', title: 'Prodotto in uso', message: 'Non puoi eliminare un prodotto presente in fatture o note credito.' });
                                   setConfirmModal({ show: true, title: 'Elimina prodotto', message: 'Eliminare "' + product + '"?', onConfirm: async () => { setConfirmModal({ show: false }); await saveToGoogleSheets('deleteProduct', { name: product }); } });
                                 }}
                                 className="w-9 h-9 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg"
