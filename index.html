@@ -44,6 +44,12 @@
           const [invoiceYearFilter, setInvoiceYearFilter] = useState('all');
           const [invoiceCarnetFilter, setInvoiceCarnetFilter] = useState(false);
           
+          // Filtri note credito
+          const [creditYearFilter, setCreditYearFilter] = useState('all');
+          
+          // Ordinamento dashboard
+          const [dashboardSort, setDashboardSort] = useState('alpha');
+          
           // Form fattura
           const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
           const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -206,14 +212,36 @@
           
           const exportDashboardImage = async () => {
             const el = document.getElementById('dashboard-table');
+            const searchBar = document.getElementById('search-bar');
             if (!el) return;
             try {
+              // Nascondi barra ricerca
+              if (searchBar) searchBar.style.display = 'none';
+              
+              // Aggiungi titolo temporaneo con anno
+              const titleDiv = document.createElement('div');
+              titleDiv.id = 'export-title';
+              titleDiv.style.cssText = 'text-align: center; font-size: 1.5rem; font-weight: bold; color: #1e40af; margin-bottom: 1rem; padding: 0.5rem;';
+              titleDiv.textContent = selectedYear === 'all' ? 'Tutti gli anni' : 'Anno ' + selectedYear;
+              el.insertBefore(titleDiv, el.firstChild);
+              
               const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
+              
+              // Rimuovi titolo e ripristina barra ricerca
+              titleDiv.remove();
+              if (searchBar) searchBar.style.display = '';
+              
               const link = document.createElement('a');
               link.download = 'cooper-margini-' + selectedYear + '-' + new Date().toISOString().split('T')[0] + '.png';
               link.href = canvas.toDataURL('image/png');
               link.click();
-            } catch (err) { setModal({ show: true, type: 'error', title: 'Errore', message: err.message }); }
+            } catch (err) { 
+              // Ripristina in caso di errore
+              const titleDiv = document.getElementById('export-title');
+              if (titleDiv) titleDiv.remove();
+              if (searchBar) searchBar.style.display = '';
+              setModal({ show: true, type: 'error', title: 'Errore', message: err.message }); 
+            }
           };
           
           // Analisi
@@ -384,15 +412,17 @@
                     
                     <div id="dashboard-table">
                       {(() => {
+                        const filteredInvoices = selectedYear === 'all' ? invoices : invoices.filter(i => String(i.year) === selectedYear);
                         const activeProducts = Object.entries(analysis).filter(([, d]) => d.totalQty > 0);
                         const totalCost = activeProducts.reduce((s, [, d]) => s + d.totalCost, 0);
                         const totalRevenue = activeProducts.reduce((s, [, d]) => s + d.onlinePrice * d.totalQty, 0);
                         const avgMargin = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue) * 100 : 0;
-                        const totalQty = activeProducts.reduce((s, [, d]) => s + d.totalQty, 0);
+                        const totalShipping = filteredInvoices.reduce((s, inv) => s + (parseFloat(inv.shippingCost) || 0) * 1.22, 0);
+                        const shippingPercent = totalCost > 0 ? (totalShipping / totalCost) * 100 : 0;
                         return (
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
                             <div className="bg-white rounded-lg shadow p-3 sm:p-5 border-l-4 border-orange-500">
-                              <div className="text-xs sm:text-sm font-medium text-gray-600 mb-1">Totale Speso</div>
+                              <div className="text-xs sm:text-sm font-medium text-gray-600 mb-1">Totale Fatture</div>
                               <div className="text-lg sm:text-2xl font-bold text-orange-600">€ {totalCost.toFixed(2)}</div>
                             </div>
                             <div className="bg-white rounded-lg shadow p-3 sm:p-5 border-l-4 border-blue-500">
@@ -404,17 +434,26 @@
                               <div className={'text-lg sm:text-2xl font-bold ' + (avgMargin < 20 ? 'text-red-600' : avgMargin < 30 ? 'text-yellow-600' : 'text-green-600')}>{avgMargin.toFixed(1)}%</div>
                             </div>
                             <div className="bg-white rounded-lg shadow p-3 sm:p-5 border-l-4 border-purple-500">
-                              <div className="text-xs sm:text-sm font-medium text-gray-600 mb-1">Confezioni</div>
-                              <div className="text-lg sm:text-2xl font-bold text-purple-600">{totalQty}</div>
+                              <div className="text-xs sm:text-sm font-medium text-gray-600 mb-1">Spese Spedizione</div>
+                              <div className="text-lg sm:text-2xl font-bold text-purple-600">€ {totalShipping.toFixed(2)}</div>
+                              <div className="text-xs text-gray-500 mt-1">{shippingPercent.toFixed(1)}% del totale</div>
                             </div>
                           </div>
                         );
                       })()}
                       
                       <div id="search-bar" className="bg-white rounded-lg shadow p-4 mb-4">
-                        <div className="relative">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><IconSearch /></div>
-                          <input type="text" placeholder="Cerca prodotto..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          <div className="relative flex-1">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><IconSearch /></div>
+                            <input type="text" placeholder="Cerca prodotto..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+                          </div>
+                          <select value={dashboardSort} onChange={e => setDashboardSort(e.target.value)} className="px-3 py-2 border rounded-lg text-sm min-w-[160px]">
+                            <option value="alpha">Ordine alfabetico</option>
+                            <option value="margin-asc">Margine crescente</option>
+                            <option value="margin-desc">Margine decrescente</option>
+                            <option value="qty-desc">Quantità decrescente</option>
+                          </select>
                         </div>
                       </div>
                       
@@ -432,9 +471,15 @@
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                              {Object.entries(analysis).filter(([, d]) => d.totalQty > 0).filter(([product]) => product.toLowerCase().includes(searchQuery.toLowerCase())).sort(([, a], [, b]) => a.margin - b.margin).map(([product, data]) => (
+                              {Object.entries(analysis).filter(([, d]) => d.totalQty > 0).filter(([product]) => product.toLowerCase().includes(searchQuery.toLowerCase())).sort(([pA, a], [pB, b]) => {
+                                if (dashboardSort === 'alpha') return pA.localeCompare(pB);
+                                if (dashboardSort === 'margin-asc') return a.margin - b.margin;
+                                if (dashboardSort === 'margin-desc') return b.margin - a.margin;
+                                if (dashboardSort === 'qty-desc') return b.totalQty - a.totalQty;
+                                return 0;
+                              }).map(([product, data]) => (
                                 <tr key={product} className="hover:bg-gray-50">
-                                  <td className="px-6 py-4 font-medium text-gray-800">{product}{data.hasCarnet && <span className="ml-2 carnet-badge">CARNET</span>}</td>
+                                  <td className="px-6 py-4 font-medium text-gray-800">{product}</td>
                                   <td className="px-6 py-4 text-gray-700">€ {data.avgCost.toFixed(2)}</td>
                                   <td className="px-6 py-4 font-medium text-blue-600">€ {data.onlinePrice.toFixed(2)}</td>
                                   <td className="px-6 py-4"><span className={'font-bold ' + (data.margin < 20 ? 'text-red-600' : data.margin < 30 ? 'text-yellow-600' : 'text-green-600')}>{data.margin.toFixed(1)}%</span></td>
@@ -498,8 +543,8 @@
                                       return rect ? (
                                         <div style={{ position: 'fixed', top: rect.bottom + 4 + 'px', left: rect.left + 'px', width: rect.width + 'px', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                           {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['inv-'+i] || '').toLowerCase())).map(p => (
-                                            <div key={p} onClick={() => { updateInvoiceItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['inv-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b border-gray-100 last:border-b-0">
-                                              <span>{p}</span>{products[p]?.hasCarnet && <span className="carnet-badge">CARNET</span>}
+                                            <div key={p} onClick={() => { updateInvoiceItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['inv-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0">
+                                              {p}
                                             </div>
                                           ))}
                                         </div>
@@ -543,75 +588,85 @@
                       </div>
                     </div>
                     <div className="bg-white rounded-lg shadow p-6">
-                      <h2 className="text-xl font-bold mb-4">Fatture inserite ({invoices.length})</h2>
-                      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-                        <div className="relative flex-1">
-                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
-                          <input 
-                            type="text" 
-                            placeholder="Cerca per numero fattura o prodotto..." 
-                            value={invoiceSearchQuery} 
-                            onChange={e => setInvoiceSearchQuery(e.target.value)} 
-                            className="w-full pl-10 pr-3 py-2 border rounded-lg text-sm"
-                          />
-                        </div>
-                        <select 
-                          value={invoiceYearFilter} 
-                          onChange={e => setInvoiceYearFilter(e.target.value)} 
-                          className="px-3 py-2 border rounded-lg text-sm min-w-[120px]"
-                        >
-                          <option value="all">Tutti gli anni</option>
-                          {[...new Set(invoices.map(i => i.year))].sort((a, b) => b - a).map(y => (
-                            <option key={y} value={y}>{y}</option>
-                          ))}
-                        </select>
-                        <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer hover:bg-purple-50 transition-colors">
-                          <input 
-                            type="checkbox" 
-                            checked={invoiceCarnetFilter} 
-                            onChange={e => setInvoiceCarnetFilter(e.target.checked)} 
-                            className="w-4 h-4 accent-purple-600"
-                          />
-                          <span className="text-sm font-medium text-purple-700">Solo Carnet</span>
-                        </label>
-                      </div>
-                      <div className="space-y-3">
-                        {(() => {
-                          const filtered = invoices
-                            .filter(inv => invoiceYearFilter === 'all' || String(inv.year) === invoiceYearFilter)
-                            .filter(inv => {
-                              if (!invoiceSearchQuery) return true;
-                              const q = invoiceSearchQuery.toLowerCase();
-                              return inv.number.toLowerCase().includes(q) || inv.items.some(it => it.product.toLowerCase().includes(q));
-                            })
-                            .filter(inv => !invoiceCarnetFilter || inv.items.some(it => it.isCarnet))
-                            .sort((a, b) => b.date.localeCompare(a.date));
-                          
-                          if (filtered.length === 0) {
-                            return <div className="text-center py-4 text-gray-500">{invoices.length === 0 ? 'Nessuna fattura' : 'Nessun risultato'}</div>;
-                          }
-                          
-                          return filtered.map(inv => {
-                            const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
-                            const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
-                            const total = prodTotal + shipping;
-                            const hasCarnet = inv.items.some(it => it.isCarnet);
-                            return (
-                              <div key={inv.id} className={'border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start ' + (hasCarnet ? 'border-l-4 border-l-purple-500' : '')}>
-                                <div>
-                                  <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span>{hasCarnet && <span className="carnet-badge ml-2">CARNET</span>}</div>
-                                  {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
-                                  <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%){it.isCarnet && <span className="carnet-badge ml-1">C</span>}</div>)}</div>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button onClick={() => startEditInvoice(inv)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
-                                  <button onClick={() => deleteInvoice(inv.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
-                                </div>
+                      {(() => {
+                        const filtered = invoices
+                          .filter(inv => invoiceYearFilter === 'all' || String(inv.year) === invoiceYearFilter)
+                          .filter(inv => {
+                            if (!invoiceSearchQuery) return true;
+                            const q = invoiceSearchQuery.toLowerCase();
+                            return String(inv.number || '').toLowerCase().includes(q) || inv.items.some(it => it.product.toLowerCase().includes(q));
+                          })
+                          .filter(inv => !invoiceCarnetFilter || inv.items.some(it => it.isCarnet))
+                          .sort((a, b) => b.date.localeCompare(a.date));
+                        
+                        const filteredTotal = filtered.reduce((sum, inv) => {
+                          const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
+                          const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
+                          return sum + prodTotal + shipping;
+                        }, 0);
+                        
+                        return (
+                          <>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                              <h2 className="text-xl font-bold">Fatture inserite ({filtered.length}) <span className="text-blue-600 font-normal text-base">- Totale: € {filteredTotal.toFixed(2)}</span></h2>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                              <div className="relative flex-1">
+                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" /></svg>
+                                <input 
+                                  type="text" 
+                                  placeholder="Cerca per numero fattura o prodotto..." 
+                                  value={invoiceSearchQuery} 
+                                  onChange={e => setInvoiceSearchQuery(e.target.value)} 
+                                  className="w-full pl-10 pr-3 py-2 border rounded-lg text-sm"
+                                />
                               </div>
-                            );
-                          });
-                        })()}
-                      </div>
+                              <select 
+                                value={invoiceYearFilter} 
+                                onChange={e => setInvoiceYearFilter(e.target.value)} 
+                                className="px-3 py-2 border rounded-lg text-sm min-w-[120px]"
+                              >
+                                <option value="all">Tutti gli anni</option>
+                                {[...new Set(invoices.map(i => i.year))].sort((a, b) => b - a).map(y => (
+                                  <option key={y} value={y}>{y}</option>
+                                ))}
+                              </select>
+                              <label className="flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer hover:bg-purple-50 transition-colors">
+                                <input 
+                                  type="checkbox" 
+                                  checked={invoiceCarnetFilter} 
+                                  onChange={e => setInvoiceCarnetFilter(e.target.checked)} 
+                                  className="w-4 h-4 accent-purple-600"
+                                />
+                                <span className="text-sm font-medium text-purple-700">Solo Carnet</span>
+                              </label>
+                            </div>
+                            <div className="space-y-3">
+                              {filtered.length === 0 ? (
+                                <div className="text-center py-4 text-gray-500">{invoices.length === 0 ? 'Nessuna fattura' : 'Nessun risultato'}</div>
+                              ) : filtered.map(inv => {
+                                const prodTotal = inv.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceNet) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
+                                const shipping = (parseFloat(inv.shippingCost) || 0) * 1.22;
+                                const total = prodTotal + shipping;
+                                const hasCarnet = inv.items.some(it => it.isCarnet);
+                                return (
+                                  <div key={inv.id} className={'border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start ' + (hasCarnet ? 'border-l-4 border-l-purple-500' : '')}>
+                                    <div>
+                                      <div className="font-bold">{inv.number} - {inv.date} <span className="text-blue-600 ml-2">€ {total.toFixed(2)}</span>{hasCarnet && <span className="carnet-badge ml-2">CARNET</span>}</div>
+                                      {inv.shippingCost > 0 && <div className="text-sm text-gray-500">Spese spedizione: €{parseFloat(inv.shippingCost).toFixed(2)}</div>}
+                                      <div className="text-sm text-gray-600 mt-1">{inv.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceGross} (-{it.discount}%){it.isCarnet && <span className="carnet-badge ml-1">C</span>}</div>)}</div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button onClick={() => startEditInvoice(inv)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
+                                      <button onClick={() => deleteInvoice(inv.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -665,8 +720,8 @@
                                         return rect ? (
                                           <div style={{ position: 'fixed', top: rect.bottom + 4 + 'px', left: rect.left + 'px', width: rect.width + 'px', zIndex: 9999 }} className="bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                             {PRODUCTS.filter(p => p.toLowerCase().includes((productSearchQuery['cre-'+i] || '').toLowerCase())).map(p => (
-                                              <div key={p} onClick={() => { updateCreditItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['cre-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm flex justify-between border-b border-gray-100 last:border-b-0">
-                                                <span>{p}</span>{products[p]?.hasCarnet && <span className="carnet-badge">CARNET</span>}
+                                              <div key={p} onClick={() => { updateCreditItem(i, 'product', p); setProductSearchQuery({...productSearchQuery, ['cre-'+i]: undefined}); setProductDropdownOpen({}); }} className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm border-b border-gray-100 last:border-b-0">
+                                                {p}
                                               </div>
                                             ))}
                                           </div>
@@ -702,28 +757,50 @@
                       </div>
                     </div>
                     <div className="bg-white rounded-lg shadow p-6">
-                      <h2 className="text-xl font-bold mb-4">Note di Credito ({creditNotes.length})</h2>
-                      <div className="space-y-3">
-                        {creditNotes.sort((a, b) => b.date.localeCompare(a.date)).map(note => {
+                      {(() => {
+                        const filtered = creditNotes
+                          .filter(n => creditYearFilter === 'all' || String(n.year) === creditYearFilter)
+                          .sort((a, b) => b.date.localeCompare(a.date));
+                        const filteredTotal = filtered.reduce((sum, note) => {
                           const calcTotal = note.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceUnit) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
-                          const effectiveTotal = note.creditTotal > 0 ? note.creditTotal : calcTotal;
-                          return (
-                            <div key={note.id} className="border-l-4 border-red-500 border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start">
-                              <div>
-                                <div className="font-bold">{note.number || 'N/A'} - {note.date}</div>
-                                <div className="text-sm text-gray-600 mt-1">{note.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceUnit}</div>)}</div>
-                                <div className="font-medium text-red-600 mt-1">Totale: -€ {effectiveTotal.toFixed(2)}</div>
-                                {note.creditTotal > 0 && note.creditTotal !== calcTotal && <div className="text-xs text-gray-500">(Calcolato: €{calcTotal.toFixed(2)})</div>}
-                              </div>
-                              <div className="flex gap-2">
-                                <button onClick={() => startEditCredit(note)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
-                                <button onClick={() => deleteCreditNote(note.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
-                              </div>
+                          return sum + (note.creditTotal > 0 ? note.creditTotal : calcTotal);
+                        }, 0);
+                        return (
+                          <>
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                              <h2 className="text-xl font-bold">Note di Credito ({filtered.length}) <span className="text-red-600 font-normal text-base">- Totale: €{filteredTotal.toFixed(2)}</span></h2>
+                              <select value={creditYearFilter} onChange={e => setCreditYearFilter(e.target.value)} className="px-3 py-2 border rounded-lg text-sm min-w-[120px]">
+                                <option value="all">Tutti gli anni</option>
+                                {[...new Set(creditNotes.map(n => n.year))].sort((a, b) => b - a).map(y => (
+                                  <option key={y} value={y}>{y}</option>
+                                ))}
+                              </select>
                             </div>
-                          );
-                        })}
-                        {creditNotes.length === 0 && <div className="text-center py-4 text-gray-500">Nessuna nota di credito</div>}
-                      </div>
+                            <div className="space-y-3">
+                              {filtered.length === 0 ? (
+                                <div className="text-center py-4 text-gray-500">{creditNotes.length === 0 ? 'Nessuna nota di credito' : 'Nessun risultato'}</div>
+                              ) : filtered.map(note => {
+                                const calcTotal = note.items.reduce((s, it) => s + (parseFloat(it.quantity) || 0) * (parseFloat(it.priceUnit) || 0) * (1 + (parseFloat(it.vat) || 4) / 100), 0);
+                                const effectiveTotal = note.creditTotal > 0 ? note.creditTotal : calcTotal;
+                                return (
+                                  <div key={note.id} className="border-l-4 border-red-500 border rounded-lg p-4 hover:bg-gray-50 flex justify-between items-start">
+                                    <div>
+                                      <div className="font-bold">{note.number || 'N/A'} - {note.date}</div>
+                                      <div className="text-sm text-gray-600 mt-1">{note.items.map((it, idx) => <div key={idx}>• {it.product}: {it.quantity} pz @ €{it.priceUnit}</div>)}</div>
+                                      <div className="font-medium text-red-600 mt-1">Totale: -€ {effectiveTotal.toFixed(2)}</div>
+                                      {note.creditTotal > 0 && note.creditTotal !== calcTotal && <div className="text-xs text-gray-500">(Calcolato: €{calcTotal.toFixed(2)})</div>}
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button onClick={() => startEditCredit(note)} className="text-blue-600 hover:bg-blue-50 p-2 rounded"><IconEdit /></button>
+                                      <button onClick={() => deleteCreditNote(note.id)} className="text-red-600 hover:bg-red-50 p-2 rounded"><IconTrash /></button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}
@@ -761,7 +838,7 @@
                         {PRODUCTS.filter(p => p.toLowerCase().includes(productListSearch.toLowerCase())).map(product => (
                           <div key={product} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
                             <div className="flex-1">
-                              <div className="font-medium">{product}{products[product]?.hasCarnet && <span className="ml-2 carnet-badge">CARNET</span>}</div>
+                              <div className="font-medium">{product}</div>
                               <div className="text-sm text-gray-600">€ {products[product]?.onlinePrice?.toFixed(2) || '0.00'}</div>
                             </div>
                             <div className="flex gap-2">
